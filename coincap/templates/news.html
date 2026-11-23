@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% from "_macros.html" import tag %}
+{% block title %}News{% endblock %}
+{% block content %}
+<h1>News</h1>
+<p class="muted">Latest crypto headlines from public feeds, tagged with a transparent keyword sentiment. Click a headline to read it at the source.</p>
+{% if errors %}<div class="warn">Some feeds could not be reached: {{ errors|join(', ') }}</div>{% endif %}
+
+<div class="filters">
+  <a href="{{ url_for('news_page') }}" class="{{ 'on' if not tag }}">All ({{ counts.bullish + counts.bearish + counts.neutral }})</a>
+  <a href="{{ url_for('news_page', tag='bullish') }}" class="{{ 'on' if tag == 'bullish' }}">Bullish ({{ counts.bullish }})</a>
+  <a href="{{ url_for('news_page', tag='bearish') }}" class="{{ 'on' if tag == 'bearish' }}">Bearish ({{ counts.bearish }})</a>
+  <a href="{{ url_for('news_page', tag='neutral') }}" class="{{ 'on' if tag == 'neutral' }}">Neutral ({{ counts.neutral }})</a>
+</div>
+
+<section class="card">
+  <ul class="news">
+    {% for h in items %}
+      <li>{{ tag(h.sentiment) }} <a href="{{ h.link }}" target="_blank" rel="noopener">{{ h.title }}</a><span class="muted small">{{ h.source }} · {{ h.published|when }}</span></li>
+    {% else %}
+      <li class="muted">No headlines in this filter.</li>
+    {% endfor %}
+  </ul>
+</section>
+{% endblock %}

@@ -1,0 +1,12 @@
+{
+  "_note": "Illustrative sample headlines for demo mode. Not real news.",
+  "data": [
+    {"title": "Sample: Bitcoin ETF inflows rebound as market steadies", "link": "https://example.com/sample-1", "source": "Sample Feed", "published": "2026-11-22T14:00:00+00:00"},
+    {"title": "Sample: Major exchange reports exploit, withdrawals paused", "link": "https://example.com/sample-2", "source": "Sample Feed", "published": "2026-11-22T13:20:00+00:00"},
+    {"title": "Sample: Fed speakers keep markets guessing ahead of FOMC", "link": "https://example.com/sample-3", "source": "Sample Feed", "published": "2026-11-22T12:45:00+00:00"},
+    {"title": "Sample: Solana network upgrade launches on mainnet", "link": "https://example.com/sample-4", "source": "Sample Feed", "published": "2026-11-22T11:30:00+00:00"},
+    {"title": "Sample: Altcoins slump as liquidations top $400M", "link": "https://example.com/sample-5", "source": "Sample Feed", "published": "2026-11-22T10:10:00+00:00"},
+    {"title": "Sample: Stablecoin supply reaches new record", "link": "https://example.com/sample-6", "source": "Sample Feed", "published": "2026-11-22T09:00:00+00:00"},
+    {"title": "Sample: CPI release scheduled this week could move crypto", "link": "https://example.com/sample-7", "source": "Sample Feed", "published": "2026-11-22T08:15:00+00:00"}
+  ]
+}
