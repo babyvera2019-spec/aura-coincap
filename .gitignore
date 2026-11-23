@@ -17,3 +17,8 @@ venv/
 .DS_Store
 .vscode/
 .idea/
+
+# Node / Wrangler
+node_modules/
+.wrangler/
+.dev.vars

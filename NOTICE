@@ -1,0 +1,8 @@
+AURA CoinCap
+Copyright 2026 The AURA CoinCap authors
+
+This product is a public demo built for the "Build with CMC: API Hackathon".
+It is independent from, and contains no code of, the private AURA system.
+
+Market data is provided by the CoinMarketCap API under its own terms.
+News headlines link to their original publishers; article content is not reproduced.

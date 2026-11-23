@@ -1,0 +1,30 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "aura-coincap",
+  "main": "src/index.js",
+  "compatibility_date": "2025-09-01",
+  "workers_dev": true,
+  "observability": { "enabled": true },
+
+  // Every 15 min: refresh the market snapshot (uses ~3 CMC credits per run).
+  // At minute 7 every 3 hours: one Triple AI run (refused if over budget).
+  "triggers": { "crons": ["*/15 * * * *", "7 */3 * * *"] },
+
+  // Non-secret settings. Secrets (CMC_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY,
+  // ADMIN_TOKEN) are set in the Cloudflare dashboard, never in this file.
+  "vars": {
+    "CLAUDE_MODEL": "claude-sonnet-5-5",
+    "OPENAI_MODEL": "gpt-4o-mini",
+    "AI_DAILY_BUDGET_USD": "0.30",
+    "AI_TOTAL_BUDGET_USD": "10",
+    "AI_MIN_MINUTES_BETWEEN_RUNS": "30",
+    "CLAUDE_PRICE_IN_PER_MTOK": "3",
+    "CLAUDE_PRICE_OUT_PER_MTOK": "15",
+    "OPENAI_PRICE_IN_PER_MTOK": "0.15",
+    "OPENAI_PRICE_OUT_PER_MTOK": "0.60"
+  }
+
+  // Step 2 (Triple AI storage): create a KV namespace in the dashboard and
+  // paste its ID here, then remove the comment markers:
+  // ,"kv_namespaces": [{ "binding": "STATE", "id": "PASTE_KV_NAMESPACE_ID" }]
+}

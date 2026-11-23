@@ -1,0 +1,13 @@
+{
+  "name": "aura-coincap",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Three AI agents read the crypto market on live CoinMarketCap data (Cloudflare Worker).",
+  "license": "Apache-2.0",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "dev": "npx wrangler dev",
+    "deploy": "npx wrangler deploy"
+  }
+}
