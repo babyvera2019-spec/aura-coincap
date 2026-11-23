@@ -3,8 +3,9 @@
 **Three AI agents read the crypto market, so you don't have to.**
 
 AURA CoinCap is a public crypto dashboard built on the **CoinMarketCap API** for the
-*Build with CMC: API Hackathon* (track: **AI Agents and Automation**). It puts live market
-data, news sentiment and a cross-checked AI market verdict on one screen.
+*Build with CMC: API Hackathon* (track: **AI Agents and Automation**). It runs as a single
+**Cloudflare Worker**: live market data, news sentiment and a cross-checked AI market verdict
+on one screen, refreshed automatically by cron triggers.
 
 > AI-generated commentary for demonstration only. Not financial advice. No agent places trades.
 
@@ -19,43 +20,37 @@ data, news sentiment and a cross-checked AI market verdict on one screen.
 
 ## How Triple AI works
 
-1. **Snapshot** – the app builds one compact JSON snapshot from CoinMarketCap (global metrics,
-   Fear & Greed, top 10, breadth of the top 100, top movers) plus tagged headlines.
-2. **Analyst (Claude)** – reads the snapshot and returns a bias, confidence, key points and risks.
-3. **Critic (OpenAI)** – independently checks the snapshot *and* the analyst's view, and says
-   what was missed or overstated.
-4. **Coordinator (AURA rules)** – a transparent, deterministic rule model on the same data
-   (BTC 24h move, market breadth, contrarian Fear & Greed, headline tone) casts the third vote.
-5. **Verdict** – majority of the three votes (`bullish`, `bearish`, `neutral`, or `mixed`).
+1. **Snapshot** – one compact JSON snapshot from CoinMarketCap (global metrics, Fear & Greed,
+   top 10, breadth of the top 100, top movers) plus tagged headlines.
+2. **Analyst (Claude)** – returns a bias, confidence, key points and risks.
+3. **Critic (OpenAI)** – independently checks the snapshot *and* the analyst's view.
+4. **Coordinator (AURA rules)** – a transparent rule model on the same data (BTC 24h move,
+   market breadth, contrarian Fear & Greed, headline tone) casts the third vote.
+5. **Verdict** – majority of the three votes (`bullish`, `bearish`, `neutral` or `mixed`).
 
-### Cost and safety controls
+### Automation, cost and safety
 
-- Visitors only ever see the **stored** last run; they cannot trigger paid AI calls.
-- New runs come from a schedule (`python -m coincap.run_ai`) or `POST /api/triple-ai/run`
-  with the `X-Admin-Token` header.
-- Each run is **refused before any API call** if its estimated cost would exceed the daily
-  (`AI_DAILY_BUDGET_USD`) or total (`AI_TOTAL_BUDGET_USD`) budget, or if it comes too soon
-  after the previous run (`AI_MIN_MINUTES_BETWEEN_RUNS`).
-- CoinMarketCap and news responses are cached (5 and 10 minutes by default), so traffic does not
-  burn API credits.
-- No secrets in the repository: keys live in `.env`, which is git-ignored.
+- Cron `*/15 * * * *` refreshes the market snapshot into KV (~3 CMC credits per run), so visitor
+  traffic does not spend API credits.
+- Cron `7 */3 * * *` runs Triple AI every 3 hours.
+- Visitors only see the **stored** last run; they cannot trigger paid AI calls.
+  Manual runs: `POST /api/triple-ai/run` with header `X-Admin-Token`.
+- A run is **refused before any AI call** if KV storage is missing, live CMC data is
+  unavailable, it is too soon after the last run, or its estimated cost would exceed the daily
+  (`AI_DAILY_BUDGET_USD`) or total (`AI_TOTAL_BUDGET_USD`) budget.
+- Secrets live only in Cloudflare (encrypted), never in this repository.
+- Without keys the Worker runs in **demo mode** with clearly labelled sample data.
 
-## Run locally
+## Deploy on Cloudflare (free plan)
 
-```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env        # optional: add your keys
-python run.py               # http://127.0.0.1:5000
-```
+1. Cloudflare dashboard → **Workers & Pages → Create → Import a repository** → pick this repo.
+   Deploy command: `npx wrangler deploy` (default).
+2. Worker → **Settings → Variables and Secrets** → add as **Secret**:
+   `CMC_API_KEY` (then later `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `ADMIN_TOKEN`).
+3. For Triple AI storage: **Storage & Databases → KV → Create** a namespace, paste its ID in
+   `wrangler.jsonc` under `kv_namespaces` with binding `STATE`, and push.
 
-Without any keys the app runs in **demo mode** with clearly labelled sample data, so it always
-works. Add `CMC_API_KEY` for live market data, and `ANTHROPIC_API_KEY` + `OPENAI_API_KEY` +
-`ADMIN_TOKEN` for live Triple AI runs:
-
-```bash
-python -m coincap.run_ai    # one Triple AI run (respects all limits)
-```
+Non-secret settings (models, budgets, prices) are in `wrangler.jsonc` → `vars`.
 
 ## JSON API
 
@@ -66,30 +61,29 @@ python -m coincap.run_ai    # one Triple AI run (respects all limits)
 | `GET /api/news` | Tagged headlines |
 | `GET /api/triple-ai` | Latest Triple AI run + budget status |
 | `POST /api/triple-ai/run` | New run (needs `X-Admin-Token`) |
-| `GET /healthz` | Health and mode |
+| `GET /healthz` | Health, mode and storage status |
 
-## Tests
+## Develop and test
 
 ```bash
-pip install pytest && python -m pytest -q
+npm test            # offline tests (Node 18+, no dependencies)
+npx wrangler dev    # local Worker at http://localhost:8787
 ```
-
-The tests run fully offline in demo mode.
 
 ## Project layout
 
 ```
-coincap/
-  __init__.py     Flask app, pages and JSON API
-  config.py       settings from environment / .env
-  cmc.py          CoinMarketCap client (cached, with sample-data fallback)
-  news.py         RSS headlines + keyword sentiment
-  triple_ai.py    the three agents, consensus and budget guard
-  run_ai.py       scheduled run entry point
-  templates/      pages
-  static/         styles
-  sample_data/    demo-mode data (illustrative, not real)
-tests/            offline tests
+src/
+  index.js     Worker entry: routes, JSON API, cron handlers
+  config.js    settings from vars + secrets
+  cmc.js       CoinMarketCap client (KV + memory cache, sample fallback)
+  news.js      RSS headlines + keyword sentiment
+  triple.js    the three agents, consensus and budget guard
+  render.js    HTML pages (all values escaped)
+  style.js     styles
+  sample/      demo-mode data (illustrative, not real)
+test/          offline tests
+wrangler.jsonc Cloudflare config (crons, vars, KV binding)
 ```
 
 ## License

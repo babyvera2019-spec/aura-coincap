@@ -1,3 +1,5 @@
+// Dashboard styles (served inline, no build step).
+export const CSS = `
 :root {
   --bg: #0b0f17; --panel: #121826; --line: #1f2838; --text: #e6ebf5; --muted: #8a96ab;
   --accent: #7c5cff; --up: #19c37d; --down: #ff5c6c; --flat: #8a96ab; --warn: #f5b84b;
@@ -81,3 +83,4 @@ footer p { margin: 4px 0; }
   main { padding: 16px; }
   .hero h1 { font-size: 24px; }
 }
+`;
