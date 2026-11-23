@@ -22,9 +22,10 @@
     "CLAUDE_PRICE_OUT_PER_MTOK": "15",
     "OPENAI_PRICE_IN_PER_MTOK": "0.15",
     "OPENAI_PRICE_OUT_PER_MTOK": "0.60"
-  }
+  },
 
-  // Step 2 (Triple AI storage): create a KV namespace in the dashboard and
-  // paste its ID here, then remove the comment markers:
-  // ,"kv_namespaces": [{ "binding": "STATE", "id": "PASTE_KV_NAMESPACE_ID" }]
+  // Triple AI storage (KV namespace aura-coincap-kv)
+  "kv_namespaces": [
+    { "binding": "STATE", "id": "b232bed12b204ff68b13ab2ed12b42da" }
+  ]
 }
