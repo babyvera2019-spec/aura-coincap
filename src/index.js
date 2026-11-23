@@ -4,18 +4,20 @@ import { config } from "./config.js";
 import { getMarket, movers, refreshMarket } from "./cmc.js";
 import { getNews, sentimentSummary } from "./news.js";
 import * as triple from "./triple.js";
-import { layout, overviewPage, marketPage, newsPage, triplePage } from "./render.js";
+import { layout, overviewPage, marketPage, newsPage, triplePage, coinPage } from "./render.js";
 
-export const VERSION = "0.2.0";
+export const VERSION = "0.3.0";
 
 const SECURITY_HEADERS = {
   "X-Content-Type-Options": "nosniff",
   "Referrer-Policy": "strict-origin-when-cross-origin",
   "X-Frame-Options": "DENY",
-  "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; form-action 'none'",
+  "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; form-action 'self'",
 };
 
 const html = (body, status = 200) => new Response(body, { status, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=60", ...SECURITY_HEADERS } });
+const noStore = (r) => { r.headers.set("Cache-Control", "no-store"); return r; };
+const redirect = (to) => new Response(null, { status: 303, headers: { Location: to, "Cache-Control": "no-store" } });
 const json = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=60", "Access-Control-Allow-Origin": "*" } });
 
 // Constant-time comparison for the admin token.
@@ -24,6 +26,21 @@ function safeEqual(a, b) {
   let diff = 0;
   for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
   return diff === 0;
+}
+
+// Top 50 coins a visitor can pick for a coin analysis (no stablecoins).
+const pickable = (market) => market.coins.filter(triple.isAnalyzable).slice(0, 50);
+
+// Same-site check for the coin form, so other websites cannot make visitors spend the AI budget.
+function sameSite(request, url) {
+  const src = request.headers.get("Origin") || request.headers.get("Referer");
+  if (!src) return false;
+  try { return new URL(src).host === url.host; } catch { return false; }
+}
+
+async function coinView(cfg, symbol, msg) {
+  const [market, run, state] = await Promise.all([getMarket(cfg), triple.latestCoin(cfg, symbol), triple.loadState(cfg)]);
+  return { symbol, coin: market.coins.find((c) => c.symbol === symbol) || null, run, coins: pickable(market), msg, budget: triple.budgetStatus(cfg, state) };
 }
 
 async function overviewData(cfg) {
@@ -53,8 +70,25 @@ export default {
             const filter = ["bullish", "bearish", "neutral"].includes(t) ? t : "";
             return page("News", "news", newsPage({ news, counts: sentimentSummary(news.items), filter }));
           }
-          case "/triple-ai":
-            return page("Triple AI", "triple", triplePage({ run: await triple.latest(cfg) }));
+          case "/triple-ai": {
+            const [run, market, recent] = await Promise.all([triple.latest(cfg), getMarket(cfg), triple.recentCoins(cfg)]);
+            return page("Triple AI", "triple", triplePage({ run: { ...run, coin_cache_minutes: cfg.coinCacheMinutes }, coins: pickable(market), recent }));
+          }
+          case "/triple-ai/coin": {
+            const symbol = triple.normalizeSymbol(url.searchParams.get("symbol"));
+            if (!symbol) return redirect("/triple-ai");
+            const msg = (url.searchParams.get("msg") || "").replace(/[^a-z_]/g, "");
+            return noStore(page(`${symbol} · Triple AI`, "triple", coinPage(await coinView(cfg, symbol, msg))));
+          }
+          case "/api/triple-ai/coin": {
+            const symbol = triple.normalizeSymbol(url.searchParams.get("symbol"));
+            const run = symbol ? await triple.latestCoin(cfg, symbol) : null;
+            return run ? json(run) : json({ error: "no analysis for this symbol yet" }, 404);
+          }
+          case "/api/cmc-status": {
+            const market = await getMarket(cfg);
+            return json({ source: market.source, as_of: market.as_of, calls: market.calls || [], error: market.error });
+          }
           case "/api/overview": {
             const d = await overviewData(cfg);
             return json({ market: d.market, movers: d.mv, news: d.news, sentiment: d.counts, triple_ai: d.run });
@@ -69,6 +103,21 @@ export default {
             return json(await triple.latest(cfg));
           case "/healthz":
             return json({ ok: true, version: VERSION, demo_market: cfg.demoMarket, demo_ai: cfg.demoAi, storage: Boolean(cfg.kv) });
+        }
+      }
+      if (request.method === "POST" && path === "/triple-ai/coin") {
+        const form = await request.formData().catch(() => null);
+        const symbol = triple.normalizeSymbol(form && form.get("symbol"));
+        if (!symbol) return redirect("/triple-ai");
+        const back = (msg) => redirect(`/triple-ai/coin?symbol=${encodeURIComponent(symbol)}${msg ? "&msg=" + msg : ""}`);
+        if (!sameSite(request, url)) return back("");
+        try {
+          const { cached } = await triple.runCoin(cfg, symbol, request.headers.get("CF-Connecting-IP") || "");
+          return back(cached ? "cached" : "");
+        } catch (e) {
+          if (e instanceof triple.RunRefused) return back(e.code);
+          console.error("coin run failed", e);
+          return back("error");
         }
       }
       if (request.method === "POST" && path === "/api/triple-ai/run") {

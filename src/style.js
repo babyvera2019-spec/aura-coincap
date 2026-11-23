@@ -39,7 +39,7 @@ h4 { margin: 14px 0 4px; font-size: 13px; color: var(--muted); text-transform: u
 
 .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 16px 0; }
 .kpi { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; display: flex; flex-direction: column; gap: 2px; }
-.kpi span:first-child { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .5px; }
+.kpi > span:first-child { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .5px; }
 .kpi b { font-size: 22px; }
 
 .verdict { display: flex; justify-content: space-between; gap: 24px; flex-wrap: wrap; border-left: 4px solid var(--flat); }
@@ -54,6 +54,14 @@ h4 { margin: 14px 0 4px; font-size: 13px; color: var(--muted); text-transform: u
 .tag.bullish { background: rgba(25,195,125,.15); color: var(--up); }
 .tag.bearish { background: rgba(255,92,108,.15); color: var(--down); }
 .tag.neutral { background: rgba(138,150,171,.15); color: var(--flat); }
+.tag.live { background: rgba(25,195,125,.15); color: var(--up); margin-left: 6px; vertical-align: middle; }
+.tag.sample { background: rgba(245,184,75,.15); color: var(--warn); margin-left: 6px; vertical-align: middle; }
+.banner-ok { background: #10291f; color: var(--up); padding: 8px 12px; border-radius: 8px; margin: 12px 0; font-size: 13px; }
+h2 { margin: 24px 0 4px; font-size: 18px; }
+.picker { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.picker label { color: var(--muted); font-size: 13px; }
+.picker select { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font: inherit; min-width: 220px; }
+.picker .btn { border: 0; cursor: pointer; font: inherit; margin: 0; }
 .up { color: var(--up); } .down { color: var(--down); } .flat { color: var(--flat); }
 
 table.coins { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }

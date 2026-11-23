@@ -135,7 +135,9 @@ test("live run: three votes, cost recorded, interval enforced, page shows it", a
   const r = await worker.fetch(new Request("https://x.dev/api/triple-ai/run", { method: "POST", headers: { "X-Admin-Token": "secret-token" } }), env);
   assert.equal(r.status, 200);
   const run = await r.json();
-  assert.deepEqual(Object.keys(run.votes), ["claude", "openai", "aura"]);
+  assert.deepEqual(Object.keys(run.votes), ["openai", "claude", "aura"]);
+  assert.deepEqual(run.roles, { analyst: "openai", verifier: "claude", orchestrator: "aura" });
+  assert.ok(["low", "medium", "high"].includes(run.synthesis.uncertainty));
   assert.equal(run.consensus.verdict, "bullish");
   const expected = (1000 * 3 + 200 * 15 + 1500 * 0.15 + 150 * 0.6) / 1e6;
   assert.ok(Math.abs(run.cost_usd - expected) < 1e-5);
@@ -144,9 +146,14 @@ test("live run: three votes, cost recorded, interval enforced, page shows it", a
   const again = await worker.fetch(new Request("https://x.dev/api/triple-ai/run", { method: "POST", headers: { "X-Admin-Token": "secret-token" } }), env);
   assert.equal(again.status, 429);
   const page = await (await get(env, "/triple-ai")).text();
-  assert.match(page, /mode: live/);
+  assert.match(page, /live run/);
+  assert.match(page, /Researcher &amp; Verifier/);
   const claudeCall = calls.find((c) => c.url.includes("anthropic"));
-  assert.equal(JSON.parse(claudeCall.init.body).model, "claude-sonnet-5-5");
+  const cb = JSON.parse(claudeCall.init.body);
+  assert.equal(cb.model, "claude-sonnet-5-5");
+  assert.ok(JSON.parse(cb.messages[0].content).analyst_view, "Claude verifies the analyst view");
+  const order = calls.filter((c) => c.url.includes("openai") || c.url.includes("anthropic")).map((c) => (c.url.includes("openai") ? "openai" : "claude"));
+  assert.deepEqual(order, ["openai", "claude"], "OpenAI analyzes first, then Claude verifies");
 });
 
 test("scheduled cron refreshes market into KV", async () => {
@@ -162,4 +169,82 @@ test("scheduled Triple AI in demo mode is skipped safely", async () => {
   await worker.scheduled({ cron: "7 */3 * * *" }, {}, { waitUntil: (p) => waits.push(p) });
   await Promise.all(waits);
   assert.ok(!calls.some((c) => c.url.includes("anthropic")));
+});
+
+// ---------------------------------------------------------------- v0.3 ---
+const postCoin = (env, symbol, headers = { Origin: "https://x.dev", "CF-Connecting-IP": "1.2.3.4" }) =>
+  worker.fetch(new Request("https://x.dev/triple-ai/coin", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded", ...headers }, body: "symbol=" + symbol }), env);
+const aiCalls = () => calls.filter((c) => c.url.includes("anthropic") || c.url.includes("openai")).length;
+
+test("coin analysis: runs once, then serves the cache with no AI cost", async () => {
+  const env = ENV_LIVE();
+  const r = await postCoin(env, "eth");
+  assert.equal(r.status, 303);
+  assert.equal(r.headers.get("Location"), "/triple-ai/coin?symbol=ETH");
+  assert.equal(aiCalls(), 2);
+  const page = await (await get(env, "/triple-ai/coin?symbol=ETH")).text();
+  assert.match(page, /ETH/); assert.match(page, /AURA verdict/); assert.match(page, /\$3,200\.00/);
+  const r2 = await postCoin(env, "ETH");
+  assert.equal(r2.headers.get("Location"), "/triple-ai/coin?symbol=ETH&msg=cached");
+  assert.equal(aiCalls(), 2, "cache hit must not call the AI again");
+  const api = await (await get(env, "/api/triple-ai/coin?symbol=ETH")).json();
+  assert.equal(api.symbol, "ETH"); assert.equal(api.kind, "coin"); assert.equal(api.snapshot.focus, "ETH");
+});
+
+test("coin analysis refuses unknown coins and stablecoins before any AI call", async () => {
+  const env = ENV_LIVE();
+  assert.equal((await postCoin(env, "NOTACOIN")).headers.get("Location"), "/triple-ai/coin?symbol=NOTACOIN&msg=unknown_coin");
+  assert.equal((await postCoin(env, "USDT")).headers.get("Location"), "/triple-ai/coin?symbol=USDT&msg=stablecoin");
+  assert.equal(aiCalls(), 0);
+});
+
+test("coin analysis: cross-site posts never spend the budget", async () => {
+  const env = ENV_LIVE();
+  const r = await postCoin(env, "BTC", { Origin: "https://evil.example", "CF-Connecting-IP": "1.2.3.4" });
+  assert.equal(r.headers.get("Location"), "/triple-ai/coin?symbol=BTC");
+  const r2 = await postCoin(env, "BTC", {});
+  assert.equal(r2.headers.get("Location"), "/triple-ai/coin?symbol=BTC");
+  assert.equal(aiCalls(), 0);
+});
+
+test("coin analysis: daily cap and per-visitor hourly limit", async () => {
+  const env = { ...ENV_LIVE(), AI_COIN_RUNS_PER_VISITOR_HOUR: "1" };
+  await postCoin(env, "BTC");
+  assert.equal((await postCoin(env, "SOL")).headers.get("Location"), "/triple-ai/coin?symbol=SOL&msg=visitor_limit");
+  const env2 = { ...ENV_LIVE(), AI_COIN_RUNS_PER_DAY: "0" };
+  assert.equal((await postCoin(env2, "BTC")).headers.get("Location"), "/triple-ai/coin?symbol=BTC&msg=daily_cap");
+});
+
+test("coin analysis refused when the budget would be exceeded", async () => {
+  const env = { ...ENV_LIVE(), AI_DAILY_BUDGET_USD: "0" };
+  assert.equal((await postCoin(env, "BTC")).headers.get("Location"), "/triple-ai/coin?symbol=BTC&msg=budget");
+  assert.equal(aiCalls(), 0);
+});
+
+test("CMC call log is recorded and shown as evidence", async () => {
+  const env = ENV_LIVE();
+  const page = await (await get(env, "/market")).text();
+  assert.match(page, /CoinMarketCap API calls behind this snapshot/);
+  assert.match(page, /\/v1\/cryptocurrency\/listings\/latest/);
+  const st = await (await get(env, "/api/cmc-status")).json();
+  assert.equal(st.source, "coinmarketcap");
+  assert.equal(st.calls.length, 3);
+  assert.ok(st.calls.every((c) => c.http === 200));
+});
+
+test("runs stored before the role change still render correctly", async () => {
+  const env = ENV_LIVE();
+  const legacy = { created: "2026-11-23T15:07:00Z", mode: "live", models: { claude: "claude-sonnet-5-5", openai: "gpt-4o-mini", aura: "rules-v1" },
+    agents: { claude: { bias: "neutral", confidence: 55, summary: "Old analyst text", key_points: ["k"], risks: ["r"] }, openai: { agrees: false, bias: "bearish", confidence: 70, critique: "Old critic text", missing: [] }, aura: { bias: "bullish", score: 3, reasons: ["x"] } },
+    votes: { claude: "neutral", openai: "bearish", aura: "bullish" }, consensus: { verdict: "mixed", agreement: "1/3", unanimous: false }, cost_usd: 0.011 };
+  await env.STATE.put("triple_state", JSON.stringify({ runs: [legacy], spend_by_day: {}, total_spend: 0.011 }));
+  const t = await (await get(env, "/triple-ai")).text();
+  assert.match(t, /Old analyst text/); assert.match(t, /Old critic text/); assert.match(t, /uncertainty|Uncertainty/);
+  assert.equal((await get(env, "/")).status, 200);
+});
+
+test("sample run is labelled as illustrative, live runs as live", async () => {
+  const t = await (await get(ENV_DEMO, "/triple-ai")).text();
+  assert.match(t, /sample · illustrative/);
+  assert.doesNotMatch(t, /for demonstration only/);
 });

@@ -1,4 +1,6 @@
 // CoinMarketCap client: listings, global metrics, Fear & Greed.
+// Every live call is logged in market.calls (endpoint, HTTP status, CMC timestamp, credits, elapsed ms)
+// so the dashboard can show proof of the real API calls behind each snapshot.
 // Builds one "market" object; cached in memory and (if KV is bound) in KV,
 // so visitor traffic does not spend CMC credits.
 import { LISTINGS, GLOBAL, FEAR_GREED } from "./sample/data.js";
@@ -36,25 +38,35 @@ export function sampleMarket(error = null) {
     fear_greed: normFng(FEAR_GREED.data),
     source: "demo-sample",
     as_of: null,
+    calls: [],
     error,
   };
 }
 
-async function cmcGet(cfg, path, params = {}) {
+const callLog = (path, http, body) => {
+  const st = (body && body.status) || {};
+  return { endpoint: path, http, cmc_timestamp: st.timestamp ?? null, error_code: st.error_code ?? null, credit_count: st.credit_count ?? null, elapsed_ms: st.elapsed ?? null };
+};
+
+async function cmcGet(cfg, path, params = {}, log = []) {
   const url = new URL(cfg.cmcBase + path);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   const r = await fetch(url, { headers: { "X-CMC_PRO_API_KEY": cfg.cmcKey, Accept: "application/json" } });
+  let body = null;
+  try { body = await r.json(); } catch { body = null; }
+  log.push(callLog(path, r.status, body));
   if (!r.ok) throw new Error(`CMC ${path} HTTP ${r.status}`);
-  return r.json();
+  return body;
 }
 
 // Live fetch from CMC (3 credits). Fear & Greed is optional: if the plan
 // does not include it, the rest still works.
 export async function fetchMarket(cfg) {
+  const log = [];
   const [listings, glob, fng] = await Promise.allSettled([
-    cmcGet(cfg, "/v1/cryptocurrency/listings/latest", { start: 1, limit: 100, convert: "USD" }),
-    cmcGet(cfg, "/v1/global-metrics/quotes/latest", { convert: "USD" }),
-    cmcGet(cfg, "/v3/fear-and-greed/latest"),
+    cmcGet(cfg, "/v1/cryptocurrency/listings/latest", { start: 1, limit: 100, convert: "USD" }, log),
+    cmcGet(cfg, "/v1/global-metrics/quotes/latest", { convert: "USD" }, log),
+    cmcGet(cfg, "/v3/fear-and-greed/latest", {}, log),
   ]);
   if (listings.status !== "fulfilled") throw listings.reason;
   return {
@@ -63,6 +75,7 @@ export async function fetchMarket(cfg) {
     fear_greed: fng.status === "fulfilled" ? normFng(fng.value.data) : normFng({}),
     source: "coinmarketcap",
     as_of: new Date().toISOString(),
+    calls: log,
     error: null,
   };
 }
