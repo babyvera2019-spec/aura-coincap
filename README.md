@@ -7,7 +7,7 @@ AURA CoinCap is a public crypto dashboard built on the **CoinMarketCap API** for
 **Cloudflare Worker**: live market data, news sentiment and a cross-checked AI market verdict
 on one screen, refreshed automatically by cron triggers.
 
-> AI-generated commentary for demonstration only. Not financial advice. No agent places trades.
+> AI-generated market commentary. Not financial advice. No agent places trades.
 
 ## Modules
 
